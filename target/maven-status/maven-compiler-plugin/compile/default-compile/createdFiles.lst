@@ -1,1 +1,3 @@
+com\monframework\controllers\TestController.class
 com\monframework\framework\FrontController.class
+com\monframework\framework\annotation\Controller.class

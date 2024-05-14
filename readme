@@ -1,0 +1,14 @@
+# Mon Framework MVC
+
+## Configuration requise
+
+- Java 17
+- Apache Tomcat 9+
+- Maven 3.6+
+
+## Installation
+
+1. Cloner le dépôt
+2. Compiler avec Maven:
+   ```bash
+   mvn clean package

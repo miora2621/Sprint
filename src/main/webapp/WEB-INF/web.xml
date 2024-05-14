@@ -8,6 +8,10 @@
     <servlet>
         <servlet-name>FrontController</servlet-name>
         <servlet-class>com.monframework.framework.FrontController</servlet-class>
+        <init-param>
+            <param-name>controller-package</param-name>
+            <param-value>com.monframework.controllers</param-value>
+        </init-param>
     </servlet>
     
     <servlet-mapping>
