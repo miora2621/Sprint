@@ -1,3 +1,5 @@
 com\monframework\controllers\TestController.class
-com\monframework\framework\FrontController.class
 com\monframework\framework\annotation\Controller.class
+com\monframework\framework\annotation\GET.class
+com\monframework\framework\FrontController.class
+com\monframework\framework\Mapping.class
