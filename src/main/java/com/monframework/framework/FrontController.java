@@ -7,6 +7,7 @@ import javax.servlet.*;
 import javax.servlet.http.*;
 import java.io.*;
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 
@@ -78,15 +79,36 @@ public class FrontController extends HttpServlet {
             out.println("<!DOCTYPE html>");
             out.println("<html>");
             out.println("<head>");
-            out.println("<title>Mon Framework - Mapping</title>");
+            out.println("<title>Mon Framework - Execution</title>");
             out.println("</head>");
             out.println("<body>");
             
             Mapping mapping = urlMappings.get(path);
             if (mapping != null) {
                 out.println("<h1>URL: " + path + "</h1>");
-                out.println("<h2>Mapping trouvé:</h2>");
-                out.println("<p>" + mapping.toString() + "</p>");
+                
+                try {
+                    // Récupération de la classe et création d'une instance
+                    Class<?> controllerClass = Class.forName(mapping.getClassName());
+                    Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                    
+                    // Récupération de la méthode
+                    Method method = controllerClass.getMethod(mapping.getMethodName());
+                    
+                    // Invocation de la méthode
+                    String result = (String) method.invoke(controllerInstance);
+                    
+                    // Affichage du résultat
+                    out.println("<h2>Résultat de l'exécution:</h2>");
+                    out.println("<p>" + result + "</p>");
+                    
+                } catch (ClassNotFoundException | NoSuchMethodException | 
+                         IllegalAccessException | InstantiationException | 
+                         InvocationTargetException e) {
+                    out.println("<p style='color:red'>Erreur lors de l'exécution: " + e.getMessage() + "</p>");
+                    e.printStackTrace();
+                }
+                
             } else {
                 out.println("<h1>URL: " + path + "</h1>");
                 out.println("<p style='color:red'>Aucune méthode associée à ce chemin</p>");
