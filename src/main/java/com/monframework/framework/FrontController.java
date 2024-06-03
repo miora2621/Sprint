@@ -7,7 +7,6 @@ import javax.servlet.*;
 import javax.servlet.http.*;
 import java.io.*;
 import java.lang.reflect.Method;
-import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 
@@ -76,46 +75,43 @@ public class FrontController extends HttpServlet {
         response.setContentType("text/html;charset=UTF-8");
         
         try (PrintWriter out = response.getWriter()) {
-            out.println("<!DOCTYPE html>");
-            out.println("<html>");
-            out.println("<head>");
-            out.println("<title>Mon Framework - Execution</title>");
-            out.println("</head>");
-            out.println("<body>");
-            
             Mapping mapping = urlMappings.get(path);
+            
             if (mapping != null) {
-                out.println("<h1>URL: " + path + "</h1>");
-                
                 try {
-                    // Récupération de la classe et création d'une instance
                     Class<?> controllerClass = Class.forName(mapping.getClassName());
                     Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                    
-                    // Récupération de la méthode
                     Method method = controllerClass.getMethod(mapping.getMethodName());
                     
-                    // Invocation de la méthode
-                    String result = (String) method.invoke(controllerInstance);
+                    Object result = method.invoke(controllerInstance);
                     
-                    // Affichage du résultat
-                    out.println("<h2>Résultat de l'exécution:</h2>");
-                    out.println("<p>" + result + "</p>");
+                    if (result instanceof String) {
+                        out.println(result.toString());
+                    } 
+                    else if (result instanceof ModelView) {
+                        ModelView modelView = (ModelView) result;
+                        
+                        // Ajouter les données à la requête
+                        for (HashMap.Entry<String, Object> entry : modelView.getData().entrySet()) {
+                            request.setAttribute(entry.getKey(), entry.getValue());
+                        }
+                        
+                        // Forward vers la vue
+                        RequestDispatcher dispatcher = request.getRequestDispatcher(modelView.getUrl());
+                        dispatcher.forward(request, response);
+                        return; // Important pour arrêter l'exécution ici
+                    } 
+                    else {
+                        out.println("Type de retour non reconnu");
+                    }
                     
-                } catch (ClassNotFoundException | NoSuchMethodException | 
-                         IllegalAccessException | InstantiationException | 
-                         InvocationTargetException e) {
-                    out.println("<p style='color:red'>Erreur lors de l'exécution: " + e.getMessage() + "</p>");
+                } catch (Exception e) {
+                    out.println("<p style='color:red'>Erreur: " + e.getMessage() + "</p>");
                     e.printStackTrace();
                 }
-                
             } else {
-                out.println("<h1>URL: " + path + "</h1>");
                 out.println("<p style='color:red'>Aucune méthode associée à ce chemin</p>");
             }
-            
-            out.println("</body>");
-            out.println("</html>");
         }
     }
 
