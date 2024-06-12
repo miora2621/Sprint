@@ -5,6 +5,5 @@
 </head>
 <body>
     <h1>${message}</h1>
-    <p>Le nombre magique est: ${nombre}</p>
 </body>
 </html>

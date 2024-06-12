@@ -14,38 +14,55 @@ public class FrontController extends HttpServlet {
     
     private Map<String, Mapping> urlMappings = new HashMap<>();
     private String controllerPackage;
+    private List<String> errors = new ArrayList<>();
 
     @Override
     public void init() throws ServletException {
         ServletConfig config = getServletConfig();
         controllerPackage = config.getInitParameter("controller-package");
+        
+        if (controllerPackage == null || controllerPackage.isEmpty()) {
+            errors.add("Erreur: Le package des contrôleurs n'est pas configuré dans web.xml");
+            return;
+        }
+        
         scanControllersAndMethods();
+        
+        if (urlMappings.isEmpty()) {
+            errors.add("Avertissement: Aucun contrôleur trouvé dans le package " + controllerPackage);
+        }
     }
 
-    private void scanControllersAndMethods() throws ServletException {
+    private void scanControllersAndMethods() {
         try {
             ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
             String path = controllerPackage.replace('.', '/');
             
-            Collections.list(classLoader.getResources(path))
-                .stream()
-                .map(url -> new File(url.getFile()))
-                .flatMap(dir -> Arrays.stream(dir.listFiles()))
-                .filter(file -> file.getName().endsWith(".class"))
-                .map(file -> {
-                    String className = controllerPackage + '.' + 
-                                     file.getName().replace(".class", "");
-                    try {
-                        return Class.forName(className);
-                    } catch (ClassNotFoundException e) {
-                        return null;
-                    }
-                })
-                .filter(clazz -> clazz != null && clazz.isAnnotationPresent(Controller.class))
-                .forEach(this::processControllerMethods);
+            // Vérifier si le package existe
+            if (classLoader.getResources(path).hasMoreElements()) {
+                Collections.list(classLoader.getResources(path))
+                    .stream()
+                    .map(url -> new File(url.getFile()))
+                    .flatMap(dir -> Arrays.stream(dir.listFiles()))
+                    .filter(file -> file.getName().endsWith(".class"))
+                    .map(file -> {
+                        String className = controllerPackage + '.' + 
+                                         file.getName().replace(".class", "");
+                        try {
+                            return Class.forName(className);
+                        } catch (ClassNotFoundException e) {
+                            errors.add("Erreur: Classe non trouvée - " + className);
+                            return null;
+                        }
+                    })
+                    .filter(clazz -> clazz != null && clazz.isAnnotationPresent(Controller.class))
+                    .forEach(this::processControllerMethods);
+            } else {
+                errors.add("Erreur: Le package " + controllerPackage + " n'existe pas ou est vide");
+            }
             
         } catch (IOException e) {
-            throw new ServletException("Failed to scan controllers", e);
+            errors.add("Erreur lors du scan des contrôleurs: " + e.getMessage());
         }
     }
 
@@ -59,22 +76,36 @@ public class FrontController extends HttpServlet {
                     url = "/" + controllerClass.getSimpleName().replace("Controller", "").toLowerCase() 
                           + "/" + method.getName();
                 }
-                urlMappings.put(url, new Mapping(controllerClass.getName(), method.getName()));
+                
+                // Vérification des URLs dupliquées
+                if (urlMappings.containsKey(url)) {
+                    errors.add("Erreur: URL dupliquée - " + url + 
+                              " (Déjà mappée à " + urlMappings.get(url).getClassName() + "." + 
+                              urlMappings.get(url).getMethodName() + ")");
+                } else {
+                    urlMappings.put(url, new Mapping(controllerClass.getName(), method.getName()));
+                }
             }
         }
     }
 
-   
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        
-        String requestURI = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        String path = requestURI.substring(contextPath.length());
         
         response.setContentType("text/html;charset=UTF-8");
         
         try (PrintWriter out = response.getWriter()) {
+            // Afficher les erreurs d'initialisation s'il y en a
+            if (!errors.isEmpty()) {
+                out.println("<h1>Erreurs de configuration</h1>");
+                errors.forEach(error -> out.println("<p style='color:red'>" + error + "</p>"));
+                return;
+            }
+            
+            String requestURI = request.getRequestURI();
+            String contextPath = request.getContextPath();
+            String path = requestURI.substring(contextPath.length());
+            
             Mapping mapping = urlMappings.get(path);
             
             if (mapping != null) {
@@ -91,26 +122,28 @@ public class FrontController extends HttpServlet {
                     else if (result instanceof ModelView) {
                         ModelView modelView = (ModelView) result;
                         
-                        // Ajouter les données à la requête
                         for (HashMap.Entry<String, Object> entry : modelView.getData().entrySet()) {
                             request.setAttribute(entry.getKey(), entry.getValue());
                         }
                         
-                        // Forward vers la vue
                         RequestDispatcher dispatcher = request.getRequestDispatcher(modelView.getUrl());
                         dispatcher.forward(request, response);
-                        return; // Important pour arrêter l'exécution ici
+                        return;
                     } 
                     else {
-                        out.println("Type de retour non reconnu");
+                        out.println("<h1>Erreur: Type de retour non supporté</h1>");
+                        out.println("<p>La méthode " + mapping.getMethodName() + " dans " + 
+                                  mapping.getClassName() + " doit retourner String ou ModelView</p>");
                     }
                     
                 } catch (Exception e) {
-                    out.println("<p style='color:red'>Erreur: " + e.getMessage() + "</p>");
+                    out.println("<h1>Erreur lors de l'exécution</h1>");
+                    out.println("<p style='color:red'>" + e.getMessage() + "</p>");
                     e.printStackTrace();
                 }
             } else {
-                out.println("<p style='color:red'>Aucune méthode associée à ce chemin</p>");
+                out.println("<h1>Erreur 404</h1>");
+                out.println("<p style='color:red'>Aucune méthode associée à ce chemin: " + path + "</p>");
             }
         }
     }

@@ -10,7 +10,11 @@ public class TestController {
     public ModelView testMethod() {
         ModelView modelView = new ModelView("test.jsp");
         modelView.addObject("message", "Bonjour depuis TestController!");
-        modelView.addObject("nombre", 42);
         return modelView;
     }
+
+    // @GET("/test")
+    // public int testMethod2() {
+    //     return 2;
+    // }
 }
