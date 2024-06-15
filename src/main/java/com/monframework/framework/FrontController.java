@@ -2,6 +2,9 @@ package com.monframework.framework;
 
 import com.monframework.framework.annotation.Controller;
 import com.monframework.framework.annotation.GET;
+import com.monframework.framework.annotation.Param;
+
+import java.lang.reflect.Parameter;
 
 import javax.servlet.*;
 import javax.servlet.http.*;
@@ -89,63 +92,117 @@ public class FrontController extends HttpServlet {
         }
     }
 
+    private Method findMethod(Class<?> controllerClass, String methodName) {
+        for (Method method : controllerClass.getDeclaredMethods()) {
+            if (method.getName().equals(methodName)) {
+                return method;
+            }
+        }
+        throw new RuntimeException("Méthode " + methodName + " non trouvée dans " + controllerClass.getName());
+    }
+
+   
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
+        throws ServletException, IOException {
+    
+        String requestURI = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        String path = requestURI.substring(contextPath.length());
+        String cleanPath = path.split("\\?")[0];
         
         response.setContentType("text/html;charset=UTF-8");
         
         try (PrintWriter out = response.getWriter()) {
-            // Afficher les erreurs d'initialisation s'il y en a
             if (!errors.isEmpty()) {
                 out.println("<h1>Erreurs de configuration</h1>");
                 errors.forEach(error -> out.println("<p style='color:red'>" + error + "</p>"));
                 return;
             }
             
-            String requestURI = request.getRequestURI();
-            String contextPath = request.getContextPath();
-            String path = requestURI.substring(contextPath.length());
-            
-            Mapping mapping = urlMappings.get(path);
+            Mapping mapping = urlMappings.get(cleanPath);
             
             if (mapping != null) {
                 try {
                     Class<?> controllerClass = Class.forName(mapping.getClassName());
                     Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                    Method method = controllerClass.getMethod(mapping.getMethodName());
                     
-                    Object result = method.invoke(controllerInstance);
+                    // Modification ici: Utiliser la nouvelle méthode findMethod
+                    Method method = findMethod(controllerClass, mapping.getMethodName());
+                    
+                    Object[] args = prepareMethodArguments(method, request);
+                    Object result = method.invoke(controllerInstance, args);
                     
                     if (result instanceof String) {
                         out.println(result.toString());
                     } 
                     else if (result instanceof ModelView) {
                         ModelView modelView = (ModelView) result;
-                        
                         for (HashMap.Entry<String, Object> entry : modelView.getData().entrySet()) {
                             request.setAttribute(entry.getKey(), entry.getValue());
                         }
-                        
                         RequestDispatcher dispatcher = request.getRequestDispatcher(modelView.getUrl());
                         dispatcher.forward(request, response);
                         return;
                     } 
                     else {
                         out.println("<h1>Erreur: Type de retour non supporté</h1>");
-                        out.println("<p>La méthode " + mapping.getMethodName() + " dans " + 
-                                  mapping.getClassName() + " doit retourner String ou ModelView</p>");
                     }
                     
                 } catch (Exception e) {
                     out.println("<h1>Erreur lors de l'exécution</h1>");
-                    out.println("<p style='color:red'>" + e.getMessage() + "</p>");
+                    out.println("<p style='color:red'>" + e.toString() + "</p>");
                     e.printStackTrace();
                 }
             } else {
                 out.println("<h1>Erreur 404</h1>");
-                out.println("<p style='color:red'>Aucune méthode associée à ce chemin: " + path + "</p>");
+                out.println("<p style='color:red'>Aucune méthode associée à ce chemin: " + cleanPath + "</p>");
             }
         }
+    }
+
+    private Object[] prepareMethodArguments(Method method, HttpServletRequest request) {
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+        
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter param = parameters[i];
+            
+            // Si c'est HttpServletRequest, on l'injecte directement
+            if (param.getType().equals(HttpServletRequest.class)) {
+                args[i] = request;
+                continue;
+            }
+            
+            // Vérifier si le paramètre a l'annotation @Param
+            Param paramAnnotation = param.getAnnotation(Param.class);
+            if (paramAnnotation != null) {
+                String paramName = paramAnnotation.name();
+                String paramValue = request.getParameter(paramName);
+                
+                // Conversion du type si nécessaire
+                args[i] = convertParameterValue(paramValue, param.getType());
+            } else {
+                args[i] = null; // Ou une valeur par défaut
+            }
+        }
+        
+        return args;
+    }
+
+    private Object convertParameterValue(String value, Class<?> targetType) {
+        if (value == null) return null;
+        
+        if (targetType.equals(String.class)) {
+            return value;
+        } else if (targetType.equals(Integer.class) || targetType.equals(int.class)) {
+            return Integer.parseInt(value);
+        } else if (targetType.equals(Double.class) || targetType.equals(double.class)) {
+            return Double.parseDouble(value);
+        } else if (targetType.equals(Boolean.class) || targetType.equals(boolean.class)) {
+            return Boolean.parseBoolean(value);
+        }
+        // Ajouter d'autres conversions au besoin
+        return value;
     }
 
     @Override
