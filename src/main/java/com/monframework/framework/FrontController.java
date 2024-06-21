@@ -1,9 +1,13 @@
 package com.monframework.framework;
 
 import com.monframework.framework.annotation.Controller;
+import com.monframework.framework.annotation.FormField;
 import com.monframework.framework.annotation.GET;
+import com.monframework.framework.annotation.ModelAttribute;
 import com.monframework.framework.annotation.Param;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Parameter;
 
 import javax.servlet.*;
@@ -92,6 +96,8 @@ public class FrontController extends HttpServlet {
         }
     }
 
+    
+
     private Method findMethod(Class<?> controllerClass, String methodName) {
         for (Method method : controllerClass.getDeclaredMethods()) {
             if (method.getName().equals(methodName)) {
@@ -99,6 +105,33 @@ public class FrontController extends HttpServlet {
             }
         }
         throw new RuntimeException("Méthode " + methodName + " non trouvée dans " + controllerClass.getName());
+    }
+
+    private <T> T createModelFromRequest(Class<T> modelClass, HttpServletRequest request) 
+        throws InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
+        
+        T model = modelClass.getDeclaredConstructor().newInstance();
+        Field[] fields = modelClass.getDeclaredFields();
+        
+        for (Field field : fields) {
+            field.setAccessible(true);
+            String fieldName = getFormFieldName(field);
+            String paramValue = request.getParameter(fieldName);
+            
+            if (paramValue != null && !paramValue.isEmpty()) {
+                Object convertedValue = convertParameterValue(paramValue, field.getType());
+                field.set(model, convertedValue);
+            }
+        }
+        
+        return model;
+    }
+
+    private String getFormFieldName(Field field) {
+        FormField formField = field.getAnnotation(FormField.class);
+        return formField != null && !formField.value().isEmpty() 
+               ? formField.value() 
+               : field.getName();
     }
 
    
@@ -167,22 +200,29 @@ public class FrontController extends HttpServlet {
         for (int i = 0; i < parameters.length; i++) {
             Parameter param = parameters[i];
             
-            // Si c'est HttpServletRequest, on l'injecte directement
             if (param.getType().equals(HttpServletRequest.class)) {
                 args[i] = request;
                 continue;
             }
             
-            // Vérifier si le paramètre a l'annotation @Param
+            // Gestion des @ModelAttribute
+            if (param.isAnnotationPresent(ModelAttribute.class)) {
+                try {
+                    args[i] = createModelFromRequest(param.getType(), request);
+                } catch (Exception e) {
+                    throw new RuntimeException("Erreur lors de la création du modèle", e);
+                }
+                continue;
+            }
+            
+            // Gestion des @Param (existant)
             Param paramAnnotation = param.getAnnotation(Param.class);
             if (paramAnnotation != null) {
                 String paramName = paramAnnotation.name();
                 String paramValue = request.getParameter(paramName);
-                
-                // Conversion du type si nécessaire
                 args[i] = convertParameterValue(paramValue, param.getType());
             } else {
-                args[i] = null; // Ou une valeur par défaut
+                args[i] = null;
             }
         }
         

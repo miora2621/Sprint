@@ -5,7 +5,9 @@ import javax.servlet.http.HttpServletRequest;
 import com.monframework.framework.ModelView;
 import com.monframework.framework.annotation.Controller;
 import com.monframework.framework.annotation.GET;
+import com.monframework.framework.annotation.ModelAttribute;
 import com.monframework.framework.annotation.Param;
+import com.monframework.models.UserForm;
 
 @Controller
 public class TestController {
@@ -22,14 +24,12 @@ public class TestController {
     }
     
     @GET("/user-submit")
-    public ModelView handleSubmit(
-            @Param(name = "nom") String nom,
-            @Param(name = "age") int age,
+    public ModelView handleUserForm(
+            @ModelAttribute UserForm userForm,
             HttpServletRequest request) {
         
         ModelView modelView = new ModelView("userResult.jsp");
-        modelView.addObject("nom", nom);
-        modelView.addObject("age", age);
+        modelView.addObject("user", userForm);
         modelView.addObject("method", request.getMethod());
         
         return modelView;

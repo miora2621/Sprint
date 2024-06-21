@@ -1,18 +1,15 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
 <html>
 <head>
-    <title>Formulaire Utilisateur</title>
+    <title>User Form</title>
 </head>
 <body>
-    <h1>Entrez vos informations</h1>
+    <h1>User Registration</h1>
     <form action="user-submit" method="GET">
-        <label for="nom">Nom:</label>
-        <input type="text" id="nom" name="nom" required><br><br>
-        
-        <label for="age">Âge:</label>
-        <input type="number" id="age" name="age" required><br><br>
-        
-        <input type="submit" value="Envoyer">
+        <label>Username: <input type="text" name="username"></label><br>
+        <label>Email: <input type="email" name="user_email"></label><br>
+        <label>Age: <input type="number" name="age"></label><br>
+        <button type="submit">Submit</button>
     </form>
 </body>
 </html>
