@@ -204,6 +204,11 @@ public class FrontController extends HttpServlet {
                 args[i] = request;
                 continue;
             }
+
+            if (param.getType().equals(MySession.class)) {
+                args[i] = new MySession(request.getSession());
+                continue;
+            }
             
             // Gestion des @ModelAttribute
             if (param.isAnnotationPresent(ModelAttribute.class)) {

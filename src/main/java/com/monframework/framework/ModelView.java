@@ -11,6 +11,15 @@ public class ModelView {
         this.data = new HashMap<>();
     }
 
+    public ModelView() {
+        this.data = new HashMap<>();
+    }
+
+     public void setUrl(String url) {
+        this.url = url;
+    }
+
+
     // Getters et Setters
     public String getUrl() {
         return url;
