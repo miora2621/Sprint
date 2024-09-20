@@ -6,6 +6,9 @@ import com.monframework.framework.annotation.GET;
 import com.monframework.framework.annotation.ModelAttribute;
 import com.monframework.framework.annotation.Param;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.monframework.framework.annotation.RestApi;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Parameter;
@@ -22,6 +25,7 @@ public class FrontController extends HttpServlet {
     private Map<String, Mapping> urlMappings = new HashMap<>();
     private String controllerPackage;
     private List<String> errors = new ArrayList<>();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public void init() throws ServletException {
@@ -165,6 +169,12 @@ public class FrontController extends HttpServlet {
                     Object[] args = prepareMethodArguments(method, request);
                     Object result = method.invoke(controllerInstance, args);
                     
+                    // Gestion des méthodes REST API
+                    if (method.isAnnotationPresent(RestApi.class)) {
+                        handleRestApiResponse(response, result);
+                        return;
+                    }
+
                     if (result instanceof String) {
                         out.println(result.toString());
                     } 
@@ -190,6 +200,19 @@ public class FrontController extends HttpServlet {
                 out.println("<h1>Erreur 404</h1>");
                 out.println("<p style='color:red'>Aucune méthode associée à ce chemin: " + cleanPath + "</p>");
             }
+        }
+    }
+
+    private void handleRestApiResponse(HttpServletResponse response, Object result) 
+            throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        
+        if (result != null) {
+            String json = objectMapper.writeValueAsString(result);
+            response.getWriter().write(json);
+        } else {
+            response.getWriter().write("{}");
         }
     }
 
