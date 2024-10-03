@@ -4,10 +4,12 @@ import com.monframework.framework.annotation.Controller;
 import com.monframework.framework.annotation.FormField;
 import com.monframework.framework.annotation.GET;
 import com.monframework.framework.annotation.ModelAttribute;
+import com.monframework.framework.annotation.POST;
 import com.monframework.framework.annotation.Param;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monframework.framework.annotation.RestApi;
+import com.monframework.framework.annotation.Url;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -49,7 +51,6 @@ public class FrontController extends HttpServlet {
             ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
             String path = controllerPackage.replace('.', '/');
             
-            // Vérifier si le package existe
             if (classLoader.getResources(path).hasMoreElements()) {
                 Collections.list(classLoader.getResources(path))
                     .stream()
@@ -58,7 +59,7 @@ public class FrontController extends HttpServlet {
                     .filter(file -> file.getName().endsWith(".class"))
                     .map(file -> {
                         String className = controllerPackage + '.' + 
-                                         file.getName().replace(".class", "");
+                                        file.getName().replace(".class", "");
                         try {
                             return Class.forName(className);
                         } catch (ClassNotFoundException e) {
@@ -68,10 +69,7 @@ public class FrontController extends HttpServlet {
                     })
                     .filter(clazz -> clazz != null && clazz.isAnnotationPresent(Controller.class))
                     .forEach(this::processControllerMethods);
-            } else {
-                errors.add("Erreur: Le package " + controllerPackage + " n'existe pas ou est vide");
             }
-            
         } catch (IOException e) {
             errors.add("Erreur lors du scan des contrôleurs: " + e.getMessage());
         }
@@ -80,26 +78,37 @@ public class FrontController extends HttpServlet {
     private void processControllerMethods(Class<?> controllerClass) {
         Method[] methods = controllerClass.getDeclaredMethods();
         for (Method method : methods) {
-            if (method.isAnnotationPresent(GET.class)) {
-                GET getAnnotation = method.getAnnotation(GET.class);
-                String url = getAnnotation.value();
-                if (url.isEmpty()) {
-                    url = "/" + controllerClass.getSimpleName().replace("Controller", "").toLowerCase() 
-                          + "/" + method.getName();
+            if (method.isAnnotationPresent(Url.class)) {
+                String url = method.getAnnotation(Url.class).value();
+                String httpMethod = getHttpMethod(method);
+                
+                if (httpMethod == null) {
+                    errors.add("Erreur: Méthode " + method.getName() + " doit avoir @GET ou @POST");
+                    continue;
                 }
                 
-                // Vérification des URLs dupliquées
-                if (urlMappings.containsKey(url)) {
-                    errors.add("Erreur: URL dupliquée - " + url + 
-                              " (Déjà mappée à " + urlMappings.get(url).getClassName() + "." + 
-                              urlMappings.get(url).getMethodName() + ")");
+                String mappingKey = httpMethod + ":" + url;
+                
+                if (urlMappings.containsKey(mappingKey)) {
+                    Mapping existing = urlMappings.get(mappingKey);
+                    errors.add("Erreur: URL dupliquée - " + mappingKey + 
+                            " (Déjà mappée à " + existing.getClassName() + "." + 
+                            existing.getMethodName() + ")");
                 } else {
-                    urlMappings.put(url, new Mapping(controllerClass.getName(), method.getName()));
+                    urlMappings.put(mappingKey, new Mapping(controllerClass.getName(), method.getName()));
                 }
             }
         }
     }
 
+    private String getHttpMethod(Method method) {
+        if (method.isAnnotationPresent(GET.class)) {
+            return "GET";
+        } else if (method.isAnnotationPresent(POST.class)) {
+            return "POST";
+        }
+        return null;
+    }
     
 
     private Method findMethod(Class<?> controllerClass, String methodName) {
@@ -142,11 +151,14 @@ public class FrontController extends HttpServlet {
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
         throws ServletException, IOException {
     
+      
         String requestURI = request.getRequestURI();
         String contextPath = request.getContextPath();
         String path = requestURI.substring(contextPath.length());
         String cleanPath = path.split("\\?")[0];
-        
+        String httpMethod = request.getMethod().toUpperCase(); // IMPORTANT: mettre en majuscules
+        String mappingKey = httpMethod + ":" + cleanPath;
+
         response.setContentType("text/html;charset=UTF-8");
         
         try (PrintWriter out = response.getWriter()) {
@@ -156,7 +168,7 @@ public class FrontController extends HttpServlet {
                 return;
             }
             
-            Mapping mapping = urlMappings.get(cleanPath);
+            Mapping mapping = urlMappings.get(mappingKey);
             
             if (mapping != null) {
                 try {
