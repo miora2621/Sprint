@@ -10,6 +10,7 @@ import com.monframework.framework.annotation.Param;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monframework.framework.annotation.RestApi;
 import com.monframework.framework.annotation.Url;
+import com.monframework.framework.exception.FrameworkException;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -148,73 +149,84 @@ public class FrontController extends HttpServlet {
     }
 
    
+  
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
-        throws ServletException, IOException {
-    
-      
-        String requestURI = request.getRequestURI();
-        String contextPath = request.getContextPath();
-        String path = requestURI.substring(contextPath.length());
-        String cleanPath = path.split("\\?")[0];
-        String httpMethod = request.getMethod().toUpperCase(); // IMPORTANT: mettre en majuscules
-        String mappingKey = httpMethod + ":" + cleanPath;
+            throws ServletException, IOException {
+        try {
+            String requestURI = request.getRequestURI();
+            String contextPath = request.getContextPath();
+            String path = requestURI.substring(contextPath.length());
+            String cleanPath = path.split("\\?")[0];
+            String httpMethod = request.getMethod().toUpperCase();
+            String mappingKey = httpMethod + ":" + cleanPath;
 
-        response.setContentType("text/html;charset=UTF-8");
-        
-        try (PrintWriter out = response.getWriter()) {
-            if (!errors.isEmpty()) {
-                out.println("<h1>Erreurs de configuration</h1>");
-                errors.forEach(error -> out.println("<p style='color:red'>" + error + "</p>"));
-                return;
-            }
-            
+            // Debug logging
+            System.out.println("Trying to access: " + mappingKey);
+            System.out.println("Registered mappings: " + urlMappings.keySet());
+
             Mapping mapping = urlMappings.get(mappingKey);
             
-            if (mapping != null) {
-                try {
-                    Class<?> controllerClass = Class.forName(mapping.getClassName());
-                    Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                    
-                    // Modification ici: Utiliser la nouvelle méthode findMethod
-                    Method method = findMethod(controllerClass, mapping.getMethodName());
-                    
-                    Object[] args = prepareMethodArguments(method, request);
-                    Object result = method.invoke(controllerInstance, args);
-                    
-                    // Gestion des méthodes REST API
-                    if (method.isAnnotationPresent(RestApi.class)) {
-                        handleRestApiResponse(response, result);
-                        return;
-                    }
+            if (mapping == null) {
+                // Utilisez forward au lieu de sendRedirect pour conserver le code d'erreur
+                request.setAttribute("javax.servlet.error.status_code", 404);
+                request.setAttribute("javax.servlet.error.message", "URL non trouvée: " + cleanPath);
+                request.getRequestDispatcher("/error.jsp").forward(request, response);
+                return;
+            }
 
-                    if (result instanceof String) {
-                        out.println(result.toString());
-                    } 
-                    else if (result instanceof ModelView) {
-                        ModelView modelView = (ModelView) result;
-                        for (HashMap.Entry<String, Object> entry : modelView.getData().entrySet()) {
+            try {
+                Class<?> controllerClass = Class.forName(mapping.getClassName());
+                Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                Method method = controllerClass.getMethod(mapping.getMethodName());
+                
+                Object[] args = prepareMethodArguments(method, request);
+                Object result = method.invoke(controllerInstance, args);
+              
+                // Gestion des méthodes REST API
+                if (method.isAnnotationPresent(RestApi.class)) {
+                    handleRestApiResponse(response, result);
+                    return;
+                }
+                if (result instanceof String) {
+                    response.getWriter().write(result.toString());
+                } else if (result instanceof ModelView) {
+                    ModelView modelView = (ModelView) result;
+                     for (HashMap.Entry<String, Object> entry : modelView.getData().entrySet()) {
                             request.setAttribute(entry.getKey(), entry.getValue());
                         }
                         RequestDispatcher dispatcher = request.getRequestDispatcher(modelView.getUrl());
                         dispatcher.forward(request, response);
                         return;
-                    } 
-                    else {
-                        out.println("<h1>Erreur: Type de retour non supporté</h1>");
-                    }
-                    
-                } catch (Exception e) {
-                    out.println("<h1>Erreur lors de l'exécution</h1>");
-                    out.println("<p style='color:red'>" + e.toString() + "</p>");
-                    e.printStackTrace();
                 }
-            } else {
-                out.println("<h1>Erreur 404</h1>");
-                out.println("<p style='color:red'>Aucune méthode associée à ce chemin: " + cleanPath + "</p>");
+                else {
+                    response.getWriter().write("<h1>Erreur: Type de retour non supporté</h1>");
+                }
+                
+            } catch (InvocationTargetException e) {
+                // Cette exception contient l'exception réelle lancée par la méthode
+                Throwable targetException = e.getTargetException();
+                if (targetException instanceof FrameworkException) {
+                    ((FrameworkException) targetException).sendErrorResponse(request, response);
+                } else {
+                    new FrameworkException(
+                        "Erreur interne: " + targetException.getMessage(),
+                        500,
+                        "/error.jsp"
+                    ).sendErrorResponse(request, response);
+                }
             }
+            
+        } catch (Exception e) {
+            new FrameworkException(
+                "Erreur inattendue: " + e.getMessage(),
+                500,
+                "/error.jsp"
+            ).sendErrorResponse(request, response);
+            e.printStackTrace();
         }
     }
 
+    
     private void handleRestApiResponse(HttpServletResponse response, Object result) 
             throws IOException {
         response.setContentType("application/json");

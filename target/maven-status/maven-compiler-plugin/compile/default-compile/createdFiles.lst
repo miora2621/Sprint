@@ -1,3 +1,4 @@
+com\monframework\framework\exception\FrameworkException.class
 com\monframework\models\UserForm.class
 com\monframework\framework\annotation\Url.class
 com\monframework\framework\ModelView.class
@@ -10,5 +11,5 @@ com\monframework\framework\annotation\RestApi.class
 com\monframework\framework\annotation\GET.class
 com\monframework\framework\FrontController.class
 com\monframework\framework\annotation\Param.class
+com\monframework\controllers\TestController.class
 com\monframework\framework\annotation\Controller.class
-com\monframework\controllers\ExampleController.class
