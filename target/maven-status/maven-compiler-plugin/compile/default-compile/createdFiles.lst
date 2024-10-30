@@ -1,9 +1,11 @@
+com\monframework\controllers\FileController.class
 com\monframework\framework\exception\FrameworkException.class
 com\monframework\models\UserForm.class
 com\monframework\framework\annotation\Url.class
 com\monframework\framework\ModelView.class
 com\monframework\framework\Mapping.class
 com\monframework\framework\annotation\ModelAttribute.class
+com\monframework\framework\Multipart.class
 com\monframework\framework\MySession.class
 com\monframework\framework\annotation\FormField.class
 com\monframework\framework\annotation\POST.class
@@ -11,5 +13,4 @@ com\monframework\framework\annotation\RestApi.class
 com\monframework\framework\annotation\GET.class
 com\monframework\framework\FrontController.class
 com\monframework\framework\annotation\Param.class
-com\monframework\controllers\TestController.class
 com\monframework\framework\annotation\Controller.class

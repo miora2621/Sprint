@@ -7,6 +7,10 @@ import com.monframework.framework.annotation.ModelAttribute;
 import com.monframework.framework.annotation.POST;
 import com.monframework.framework.annotation.Param;
 
+import org.apache.commons.fileupload.FileItem;
+import org.apache.commons.fileupload.disk.DiskFileItemFactory;
+import org.apache.commons.fileupload.servlet.ServletFileUpload;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monframework.framework.annotation.RestApi;
 import com.monframework.framework.annotation.Url;
@@ -112,13 +116,23 @@ public class FrontController extends HttpServlet {
     }
     
 
-    private Method findMethod(Class<?> controllerClass, String methodName) {
+    private Method findMethod(Class<?> controllerClass, String methodName, HttpServletRequest request) 
+        throws NoSuchMethodException {
         for (Method method : controllerClass.getDeclaredMethods()) {
             if (method.getName().equals(methodName)) {
+                // Vérification spéciale pour les méthodes avec paramètre Multipart
+                Parameter[] parameters = method.getParameters();
+                boolean hasMultipartParam = Arrays.stream(parameters)
+                    .anyMatch(p -> p.getType().equals(Multipart.class));
+                
+                if (hasMultipartParam && !ServletFileUpload.isMultipartContent(request)) {
+                    continue;
+                }
+                
                 return method;
             }
         }
-        throw new RuntimeException("Méthode " + methodName + " non trouvée dans " + controllerClass.getName());
+        throw new NoSuchMethodException("Méthode " + methodName + " non trouvée");
     }
 
     private <T> T createModelFromRequest(Class<T> modelClass, HttpServletRequest request) 
@@ -148,11 +162,48 @@ public class FrontController extends HttpServlet {
                : field.getName();
     }
 
-   
-  
+   private boolean isMultipart(HttpServletRequest request) {
+        return ServletFileUpload.isMultipartContent(request);
+    }
+
+    private void handleMultipartRequest(HttpServletRequest request) throws Exception {
+        DiskFileItemFactory factory = new DiskFileItemFactory();
+        ServletFileUpload upload = new ServletFileUpload(factory);
+        List<FileItem> items = upload.parseRequest(request);
+
+        // Créez une map pour stocker tous les paramètres
+        Map<String, Object> requestParams = new HashMap<>();
+
+        for (FileItem item : items) {
+            if (item.isFormField()) {
+                // Pour les champs normaux
+                requestParams.put(item.getFieldName(), item.getString("UTF-8"));
+            } else {
+                // Pour les fichiers
+                if (item.getSize() > 0) {
+                    Multipart multipart = new Multipart();
+                    multipart.setFilename(item.getName());
+                    multipart.setContentType(item.getContentType());
+                    multipart.setInputStream(item.getInputStream());
+                    multipart.setSize(item.getSize());
+                    requestParams.put(item.getFieldName(), multipart);
+                }
+            }
+        }
+
+        // Stockez la map dans la requête
+        request.setAttribute("multipartParams", requestParams);
+    }
+
+
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         try {
+
+            if (isMultipart(request)) {
+                handleMultipartRequest(request);
+            }
+
             String requestURI = request.getRequestURI();
             String contextPath = request.getContextPath();
             String path = requestURI.substring(contextPath.length());
@@ -177,7 +228,7 @@ public class FrontController extends HttpServlet {
             try {
                 Class<?> controllerClass = Class.forName(mapping.getClassName());
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                Method method = controllerClass.getMethod(mapping.getMethodName());
+                Method method = findMethod(controllerClass, mapping.getMethodName(), request);
                 
                 Object[] args = prepareMethodArguments(method, request);
                 Object result = method.invoke(controllerInstance, args);
@@ -243,7 +294,9 @@ public class FrontController extends HttpServlet {
     private Object[] prepareMethodArguments(Method method, HttpServletRequest request) {
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
-        
+        // Récupérez les paramètres multipart s'ils existent
+        Map<String, Object> multipartParams = (Map<String, Object>) request.getAttribute("multipartParams");
+
         for (int i = 0; i < parameters.length; i++) {
             Parameter param = parameters[i];
             
@@ -251,12 +304,17 @@ public class FrontController extends HttpServlet {
                 args[i] = request;
                 continue;
             }
-
+            if (multipartParams != null) {
+                Param paramAnnotation = param.getAnnotation(Param.class);
+                if (paramAnnotation != null) {
+                    args[i] = multipartParams.get(paramAnnotation.name());
+                    continue;
+                }
+            }
             if (param.getType().equals(MySession.class)) {
                 args[i] = new MySession(request.getSession());
                 continue;
             }
-            
             // Gestion des @ModelAttribute
             if (param.isAnnotationPresent(ModelAttribute.class)) {
                 try {
@@ -266,7 +324,6 @@ public class FrontController extends HttpServlet {
                 }
                 continue;
             }
-            
             // Gestion des @Param (existant)
             Param paramAnnotation = param.getAnnotation(Param.class);
             if (paramAnnotation != null) {
@@ -277,7 +334,6 @@ public class FrontController extends HttpServlet {
                 args[i] = null;
             }
         }
-        
         return args;
     }
 
