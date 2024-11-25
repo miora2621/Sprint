@@ -1,4 +1,3 @@
-com\monframework\controllers\FileController.class
 com\monframework\framework\exception\FrameworkException.class
 com\monframework\models\UserForm.class
 com\monframework\framework\annotation\Url.class
@@ -10,7 +9,14 @@ com\monframework\framework\MySession.class
 com\monframework\framework\annotation\FormField.class
 com\monframework\framework\annotation\POST.class
 com\monframework\framework\annotation\RestApi.class
+com\monframework\framework\validation\Pattern.class
 com\monframework\framework\annotation\GET.class
 com\monframework\framework\FrontController.class
+com\monframework\framework\validation\Valid.class
 com\monframework\framework\annotation\Param.class
+com\monframework\framework\validation\Email.class
+com\monframework\framework\validation\Size.class
 com\monframework\framework\annotation\Controller.class
+com\monframework\framework\validation\NotNull.class
+com\monframework\framework\exception\ValidationException.class
+com\monframework\controllers\UserController.class

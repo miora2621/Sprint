@@ -14,7 +14,8 @@ import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monframework.framework.annotation.RestApi;
 import com.monframework.framework.annotation.Url;
-import com.monframework.framework.exception.FrameworkException;
+import com.monframework.framework.exception.*;
+import com.monframework.framework.validation.*;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -267,6 +268,9 @@ public class FrontController extends HttpServlet {
                 }
             }
             
+            }catch (ValidationException e) {
+            request.setAttribute("errors", e.getErrors());
+            request.getRequestDispatcher("/error-validation.jsp").forward(request, response);
         } catch (Exception e) {
             new FrameworkException(
                 "Erreur inattendue: " + e.getMessage(),
@@ -333,8 +337,53 @@ public class FrontController extends HttpServlet {
             } else {
                 args[i] = null;
             }
+
+            // Validation des paramètres
+            if (param.isAnnotationPresent(Valid.class)) {
+                Object paramValue = args[i]; // Valeur récupérée précédemment
+                validateParameter(param, paramValue);
+                args[i] = paramValue;
+            }
+            
+           
         }
         return args;
+    }
+
+    private void validateParameter(Parameter parameter, Object value) {
+        Map<String, String> errors = new HashMap<>();
+        
+        if (parameter.isAnnotationPresent(NotNull.class) && value == null) {
+            NotNull annotation = parameter.getAnnotation(NotNull.class);
+            errors.put(parameter.getName(), annotation.message());
+        }
+        
+        if (parameter.isAnnotationPresent(Size.class) && value instanceof String) {
+            Size annotation = parameter.getAnnotation(Size.class);
+            String strValue = (String) value;
+            if (strValue.length() < annotation.min() || strValue.length() > annotation.max()) {
+                errors.put(parameter.getName(), annotation.message());
+            }
+        }
+        
+        if (parameter.isAnnotationPresent(Email.class) && value instanceof String) {
+            String emailRegex = "^[A-Za-z0-9+_.-]+@(.+)$";
+            if (!((String) value).matches(emailRegex)) {
+                Email annotation = parameter.getAnnotation(Email.class);
+                errors.put(parameter.getName(), annotation.message());
+            }
+        }
+        
+        if (parameter.isAnnotationPresent(Pattern.class) && value instanceof String) {
+            Pattern annotation = parameter.getAnnotation(Pattern.class);
+            if (!((String) value).matches(annotation.regexp())) {
+                errors.put(parameter.getName(), annotation.message());
+            }
+        }
+        
+        if (!errors.isEmpty()) {
+            throw new ValidationException(errors);
+        }
     }
 
     private Object convertParameterValue(String value, Class<?> targetType) {
