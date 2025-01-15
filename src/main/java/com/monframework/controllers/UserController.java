@@ -25,6 +25,6 @@ public class UserController {
             String email) {
         
         // Traitement si validation OK
-        return new ModelView("registration-success.jsp");
+        return new ModelView("registrationsuccess.jsp");
     }
 }

@@ -6,6 +6,9 @@ import com.monframework.framework.annotation.GET;
 import com.monframework.framework.annotation.ModelAttribute;
 import com.monframework.framework.annotation.POST;
 import com.monframework.framework.annotation.Param;
+import com.monframework.framework.annotation.RequireAuth;
+import com.monframework.framework.annotation.RequireRole;
+import com.monframework.framework.auth.UserPrincipal;
 
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
@@ -219,7 +222,6 @@ public class FrontController extends HttpServlet {
             Mapping mapping = urlMappings.get(mappingKey);
             
             if (mapping == null) {
-                // Utilisez forward au lieu de sendRedirect pour conserver le code d'erreur
                 request.setAttribute("javax.servlet.error.status_code", 404);
                 request.setAttribute("javax.servlet.error.message", "URL non trouvée: " + cleanPath);
                 request.getRequestDispatcher("/error.jsp").forward(request, response);
@@ -230,6 +232,9 @@ public class FrontController extends HttpServlet {
                 Class<?> controllerClass = Class.forName(mapping.getClassName());
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                 Method method = findMethod(controllerClass, mapping.getMethodName(), request);
+                
+                // SPRINT 15: Vérification de l'autorisation avant l'exécution
+                checkMethodAuthorization(method, request);
                 
                 Object[] args = prepareMethodArguments(method, request, cleanPath);
                 Object result = method.invoke(controllerInstance, args);
@@ -259,6 +264,10 @@ public class FrontController extends HttpServlet {
                 Throwable targetException = e.getTargetException();
                 if (targetException instanceof ValidationException) {
                     handleValidationException((ValidationException) targetException, request, response);
+                } else if (targetException instanceof AuthenticationException) {
+                    ((AuthenticationException) targetException).sendErrorResponse(request, response);
+                } else if (targetException instanceof AuthorizationException) {
+                    ((AuthorizationException) targetException).sendErrorResponse(request, response);
                 } else if (targetException instanceof FrameworkException) {
                     ((FrameworkException) targetException).sendErrorResponse(request, response);
                 } else {
@@ -272,6 +281,12 @@ public class FrontController extends HttpServlet {
             
         } catch (ValidationException e) {
             handleValidationException(e, request, response);
+        } catch (AuthenticationException e) {
+            // CORRECTION: Gestion des exceptions d'authentification lancées directement
+            e.sendErrorResponse(request, response);
+        } catch (AuthorizationException e) {
+            // CORRECTION: Gestion des exceptions d'autorisation lancées directement
+            e.sendErrorResponse(request, response);
         } catch (Exception e) {
             new FrameworkException(
                 "Erreur inattendue: " + e.getMessage(),
@@ -445,6 +460,76 @@ private void handleValidationException(ValidationException e, HttpServletRequest
         }
         // Ajouter d'autres conversions au besoin
         return value;
+    }
+
+    private void checkMethodAuthorization(Method method, HttpServletRequest request) {
+        UserPrincipal currentUser = getCurrentUser(request);
+        
+        System.out.println("=== DEBUG checkMethodAuthorization ===");
+        System.out.println("Méthode: " + method.getName());
+        System.out.println("@RequireAuth présent: " + method.isAnnotationPresent(RequireAuth.class));
+        System.out.println("@RequireRole présent: " + method.isAnnotationPresent(RequireRole.class));
+        System.out.println("Utilisateur authentifié: " + currentUser.isAuthenticated());
+        
+        // Vérification @RequireAuth au niveau de la méthode
+        if (method.isAnnotationPresent(RequireAuth.class)) {
+            System.out.println("Vérification @RequireAuth...");
+            if (!currentUser.isAuthenticated()) {
+                System.out.println("ÉCHEC: Utilisateur non authentifié");
+                throw new AuthenticationException("Authentification requise pour accéder à cette méthode");
+            }
+            
+            RequireAuth requireAuth = method.getAnnotation(RequireAuth.class);
+            if (requireAuth.roles().length > 0) {
+                System.out.println("Vérification des rôles requis: " + String.join(", ", requireAuth.roles()));
+                if (!currentUser.hasAnyRole(requireAuth.roles())) {
+                    System.out.println("ÉCHEC: Rôles insuffisants");
+                    throw new AuthorizationException("Rôle requis pour cette méthode: " + 
+                        String.join(", ", requireAuth.roles()));
+                }
+            }
+            System.out.println("SUCCÈS: @RequireAuth validé");
+        }
+        
+        // Vérification @RequireRole au niveau de la méthode
+        if (method.isAnnotationPresent(RequireRole.class)) {
+            System.out.println("Vérification @RequireRole...");
+            if (!currentUser.isAuthenticated()) {
+                System.out.println("ÉCHEC: Utilisateur non authentifié");
+                throw new AuthenticationException("Authentification requise");
+            }
+            
+            RequireRole requireRole = method.getAnnotation(RequireRole.class);
+            System.out.println("Rôles requis: " + String.join(", ", requireRole.value()));
+            if (!currentUser.hasAnyRole(requireRole.value())) {
+                System.out.println("ÉCHEC: Rôles insuffisants");
+                throw new AuthorizationException("Rôle requis: " + String.join(", ", requireRole.value()));
+            }
+            System.out.println("SUCCÈS: @RequireRole validé");
+        }
+        
+        System.out.println("=== Fin DEBUG checkMethodAuthorization ===");
+    }
+
+    private UserPrincipal getCurrentUser(HttpServletRequest request) {
+        HttpSession session = request.getSession();
+        UserPrincipal user = (UserPrincipal) session.getAttribute("currentUser");
+        
+        // Debug
+        System.out.println("=== DEBUG getCurrentUser ===");
+        System.out.println("Session ID: " + session.getId());
+        
+        if (user == null) {
+            System.out.println("Aucun utilisateur trouvé en session");
+            return new UserPrincipal(); // Utilisateur non authentifié
+        } else {
+            System.out.println("Utilisateur trouvé: " + user.getUsername());
+            System.out.println("Authentifié: " + user.isAuthenticated());
+            if (user.getRoles() != null) {
+                System.out.println("Rôles: " + String.join(", ", user.getRoles()));
+            }
+            return user;
+        }
     }
 
     @Override

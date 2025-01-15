@@ -1,3 +1,5 @@
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\AuthController.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\TestController.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\UserController.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\Controller.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\FormField.java
@@ -5,8 +7,13 @@ C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\an
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\ModelAttribute.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\Param.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\POST.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\RequireAuth.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\RequireRole.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\RestApi.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\Url.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\auth\UserPrincipal.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\exception\AuthenticationException.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\exception\AuthorizationException.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\exception\FrameworkException.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\exception\ValidationException.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\FrontController.java
