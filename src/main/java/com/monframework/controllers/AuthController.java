@@ -8,82 +8,78 @@ import com.monframework.framework.auth.UserPrincipal;
 @Controller
 public class AuthController {
     
+    // Afficher le formulaire de connexion
     @Url("/login-form")
     @GET
-    public ModelView showLoginForm() {
-        return new ModelView("login.jsp");
+    public ModelView loginForm() {
+        ModelView mv = new ModelView("login-form.jsp");
+        mv.addObject("title", "Connexion");
+        return mv;
     }
     
+    // Traiter la connexion
     @Url("/login")
     @POST
-    public ModelView login(
-            @Param(name = "username") String username,
-            @Param(name = "password") String password,
-            MySession session) {
+    public ModelView login(@Param(name = "username") String username,
+                          @Param(name = "password") String password,
+                          @Param(name = "role") String role,
+                          MySession session) {
         
-        // Debug
-        System.out.println("Tentative de connexion - Username: " + username + ", Password: " + password);
-        
-        // Validation simple (en réalité, vous vérifieriez en base de données)
-        if ("admin".equals(username) && "password".equals(password)) {
-            UserPrincipal user = new UserPrincipal(username, new String[]{"ADMIN", "USER"});
+        // Simulation d'authentification simple
+        if (username != null && password != null && !username.trim().isEmpty()) {
+            
+            // Créer l'utilisateur avec le rôle choisi
+            String[] roles;
+            switch (role) {
+                case "admin":
+                    roles = new String[]{"ADMIN", "USER"};
+                    break;
+                case "manager":
+                    roles = new String[]{"MANAGER", "USER"};
+                    break;
+                case "moderator":
+                    roles = new String[]{"MODERATOR", "USER"};
+                    break;
+                case "premium":
+                    roles = new String[]{"PREMIUM", "USER"};
+                    break;
+                case "user":
+                default:
+                    roles = new String[]{"USER"};
+                    break;
+            }
+            
+            UserPrincipal user = new UserPrincipal(username, roles);
             session.add("currentUser", user);
             
-            System.out.println("Connexion admin réussie - Utilisateur stocké en session");
-            
-            ModelView mv = new ModelView("dashboard.jsp");
-            mv.addObject("message", "Connexion réussie en tant qu'admin!");
+            ModelView mv = new ModelView("login-success.jsp");
+            mv.addObject("message", "Connexion réussie ! Bienvenue " + username);
             mv.addObject("username", username);
-            return mv;
-        } else if ("user".equals(username) && "password".equals(password)) {
-            UserPrincipal user = new UserPrincipal(username, new String[]{"USER"});
-            session.add("currentUser", user);
-            
-            System.out.println("Connexion user réussie - Utilisateur stocké en session");
-            
-            ModelView mv = new ModelView("user-dashboard.jsp");
-            mv.addObject("message", "Connexion réussie en tant qu'utilisateur!");
-            mv.addObject("username", username);
-            return mv;
-        } else {
-            System.out.println("Échec de connexion - Identifiants incorrects");
-            ModelView mv = new ModelView("login.jsp");
-            mv.addObject("error", "Identifiants incorrects. Utilisez admin/password ou user/password");
+            mv.addObject("roles", String.join(", ", roles));
             return mv;
         }
+        
+        ModelView mv = new ModelView("login-form.jsp");
+        mv.addObject("error", "Nom d'utilisateur et mot de passe requis");
+        return mv;
     }
     
+    // Déconnexion
     @Url("/logout")
     @GET
     public ModelView logout(MySession session) {
         session.delete("currentUser");
-        session.invalidate();
-        
-        ModelView mv = new ModelView("login.jsp");
-        mv.addObject("message", "Déconnexion réussie");
+        ModelView mv = new ModelView("logout-success.jsp");
+        mv.addObject("message", "Vous êtes déconnecté");
         return mv;
     }
     
-    // Page pour déboguer la session
-    @Url("/debug-session")
+    // Page d'accès refusé
+    @Url("/access-denied")
     @GET
-    public ModelView debugSession(MySession session) {
-        UserPrincipal user = (UserPrincipal) session.get("currentUser");
-        
-        ModelView mv = new ModelView("debug.jsp");
-        
-        if (user != null) {
-            mv.addObject("authenticated", user.isAuthenticated());
-            mv.addObject("username", user.getUsername());
-            mv.addObject("roles", String.join(", ", user.getRoles()));
-            System.out.println("Debug - User trouvé: " + user.getUsername() + ", Rôles: " + String.join(", ", user.getRoles()));
-        } else {
-            mv.addObject("authenticated", false);
-            mv.addObject("username", "Aucun");
-            mv.addObject("roles", "Aucun");
-            System.out.println("Debug - Aucun utilisateur en session");
-        }
-        
+    public ModelView accessDenied() {
+        ModelView mv = new ModelView("access-denied.jsp");
+        mv.addObject("message", "Accès refusé - Rôles insuffisants");
         return mv;
     }
 }

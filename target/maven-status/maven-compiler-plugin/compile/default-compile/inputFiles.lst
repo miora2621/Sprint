@@ -1,6 +1,10 @@
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\AdminController.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\AuthController.java
-C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\TestController.java
-C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\UserController.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\AuthServlet.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\AuthTestController.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\ManagerController.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\MixedController.java
+C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\controllers\SecureController.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\Controller.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\FormField.java
 C:\Users\miora\Desktop\mon-framework\src\main\java\com\monframework\framework\annotation\GET.java

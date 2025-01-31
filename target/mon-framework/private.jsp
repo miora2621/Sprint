@@ -1,10 +1,12 @@
+<%@ page contentType="text/html;charset=UTF-8" %>
 <html>
 <head>
-    <title>Page privée</title>
+    <title>Private Page</title>
 </head>
 <body>
-    <h1>Page privée</h1>
+    <h1>Zone Privée</h1>
     <p>${message}</p>
-    <a href="logout">Se déconnecter</a>
+    <p>Connecté en tant que: ${sessionScope.currentUser.username}</p>
+    <a href="${pageContext.request.contextPath}/logout">Déconnexion</a>
 </body>
 </html>

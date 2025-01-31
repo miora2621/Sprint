@@ -1,38 +1,18 @@
-<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
+<%@ page contentType="text/html;charset=UTF-8" %>
 <html>
 <head>
-    <title>Connexion</title>
+    <title>Login</title>
 </head>
 <body>
-    <h2>Connexion</h2>
+    <h1>Connexion requise</h1>
+    <% if (request.getAttribute("error") != null) { %>
+        <p style="color:red"><%= request.getAttribute("error") %></p>
+    <% } %>
     
-    <c:if test="${not empty error}">
-        <div style="color:red">${error}</div>
-    </c:if>
-    
-    <c:if test="${not empty message}">
-        <div style="color:green">${message}</div>
-    </c:if>
-    
-    <form action="login" method="post">
-        <div>
-            <label>Nom d'utilisateur:</label><br>
-            <input type="text" name="username" required>
-            <small>(Essayez: admin/password ou user/password)</small>
-        </div>
-        <br>
-        <div>
-            <label>Mot de passe:</label><br>
-            <input type="password" name="password" required>
-        </div>
-        <br>
-        <button type="submit">Se connecter</button>
+    <form action="${pageContext.request.contextPath}/login" method="post">
+        <input type="text" name="username" placeholder="Username" required><br>
+        <input type="password" name="password" placeholder="Password" required><br>
+        <button type="submit">Login</button>
     </form>
-    
-    <br>
-    <a href="public">Page publique (pas d'auth requise)</a><br>
-    <a href="private">Page privée (auth requise)</a><br>
-    <a href="admin-only">Page admin (rôle ADMIN requis)</a><br>
-    <a href="user-or-admin">Page USER ou ADMIN</a>
 </body>
 </html>

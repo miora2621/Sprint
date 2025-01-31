@@ -1,24 +1,14 @@
 package com.monframework.framework;
 
-import com.monframework.framework.annotation.Controller;
-import com.monframework.framework.annotation.FormField;
-import com.monframework.framework.annotation.GET;
-import com.monframework.framework.annotation.ModelAttribute;
-import com.monframework.framework.annotation.POST;
-import com.monframework.framework.annotation.Param;
-import com.monframework.framework.annotation.RequireAuth;
-import com.monframework.framework.annotation.RequireRole;
+import com.monframework.framework.annotation.*;
 import com.monframework.framework.auth.UserPrincipal;
+import com.monframework.framework.exception.*;
+import com.monframework.framework.validation.*;
 
 import org.apache.commons.fileupload.FileItem;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.monframework.framework.annotation.RestApi;
-import com.monframework.framework.annotation.Url;
-import com.monframework.framework.exception.*;
-import com.monframework.framework.validation.*;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -29,7 +19,6 @@ import javax.servlet.http.*;
 import java.io.*;
 import java.lang.reflect.Method;
 import java.util.*;
-
 
 public class FrontController extends HttpServlet {
     
@@ -118,13 +107,11 @@ public class FrontController extends HttpServlet {
         }
         return null;
     }
-    
 
     private Method findMethod(Class<?> controllerClass, String methodName, HttpServletRequest request) 
         throws NoSuchMethodException {
         for (Method method : controllerClass.getDeclaredMethods()) {
             if (method.getName().equals(methodName)) {
-                // Vérification spéciale pour les méthodes avec paramètre Multipart
                 Parameter[] parameters = method.getParameters();
                 boolean hasMultipartParam = Arrays.stream(parameters)
                     .anyMatch(p -> p.getType().equals(Multipart.class));
@@ -166,7 +153,7 @@ public class FrontController extends HttpServlet {
                : field.getName();
     }
 
-   private boolean isMultipart(HttpServletRequest request) {
+    private boolean isMultipart(HttpServletRequest request) {
         return ServletFileUpload.isMultipartContent(request);
     }
 
@@ -175,15 +162,12 @@ public class FrontController extends HttpServlet {
         ServletFileUpload upload = new ServletFileUpload(factory);
         List<FileItem> items = upload.parseRequest(request);
 
-        // Créez une map pour stocker tous les paramètres
         Map<String, Object> requestParams = new HashMap<>();
 
         for (FileItem item : items) {
             if (item.isFormField()) {
-                // Pour les champs normaux
                 requestParams.put(item.getFieldName(), item.getString("UTF-8"));
             } else {
-                // Pour les fichiers
                 if (item.getSize() > 0) {
                     Multipart multipart = new Multipart();
                     multipart.setFilename(item.getName());
@@ -195,10 +179,8 @@ public class FrontController extends HttpServlet {
             }
         }
 
-        // Stockez la map dans la requête
         request.setAttribute("multipartParams", requestParams);
     }
-
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
         throws ServletException, IOException {
@@ -215,7 +197,6 @@ public class FrontController extends HttpServlet {
             String httpMethod = request.getMethod().toUpperCase();
             String mappingKey = httpMethod + ":" + cleanPath;
 
-            // Debug logging
             System.out.println("Trying to access: " + mappingKey);
             System.out.println("Registered mappings: " + urlMappings.keySet());
 
@@ -233,34 +214,32 @@ public class FrontController extends HttpServlet {
                 Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                 Method method = findMethod(controllerClass, mapping.getMethodName(), request);
                 
-                // SPRINT 15: Vérification de l'autorisation avant l'exécution
-                checkMethodAuthorization(method, request);
+                // SPRINT 16: Vérification de l'autorisation (classe ET méthode)
+                checkCompleteAuthorization(controllerClass, method, request);
                 
                 Object[] args = prepareMethodArguments(method, request, cleanPath);
                 Object result = method.invoke(controllerInstance, args);
             
-                // Gestion des méthodes REST API
                 if (method.isAnnotationPresent(RestApi.class)) {
                     handleRestApiResponse(response, result);
                     return;
                 }
+                
                 if (result instanceof String) {
                     response.getWriter().write(result.toString());
                 } else if (result instanceof ModelView) {
                     ModelView modelView = (ModelView) result;
                     for (HashMap.Entry<String, Object> entry : modelView.getData().entrySet()) {
-                            request.setAttribute(entry.getKey(), entry.getValue());
-                        }
-                        RequestDispatcher dispatcher = request.getRequestDispatcher(modelView.getUrl());
-                        dispatcher.forward(request, response);
-                        return;
-                }
-                else {
+                        request.setAttribute(entry.getKey(), entry.getValue());
+                    }
+                    RequestDispatcher dispatcher = request.getRequestDispatcher(modelView.getUrl());
+                    dispatcher.forward(request, response);
+                    return;
+                } else {
                     response.getWriter().write("<h1>Erreur: Type de retour non supporté</h1>");
                 }
                 
             } catch (InvocationTargetException e) {
-                // Cette exception contient l'exception réelle lancée par la méthode
                 Throwable targetException = e.getTargetException();
                 if (targetException instanceof ValidationException) {
                     handleValidationException((ValidationException) targetException, request, response);
@@ -282,10 +261,8 @@ public class FrontController extends HttpServlet {
         } catch (ValidationException e) {
             handleValidationException(e, request, response);
         } catch (AuthenticationException e) {
-            // CORRECTION: Gestion des exceptions d'authentification lancées directement
             e.sendErrorResponse(request, response);
         } catch (AuthorizationException e) {
-            // CORRECTION: Gestion des exceptions d'autorisation lancées directement
             e.sendErrorResponse(request, response);
         } catch (Exception e) {
             new FrameworkException(
@@ -297,18 +274,117 @@ public class FrontController extends HttpServlet {
         }
     }
 
-private void handleValidationException(ValidationException e, HttpServletRequest request, HttpServletResponse response) 
-        throws ServletException, IOException {
-    // Stocker les erreurs et valeurs dans la session pour les récupérer après redirection
-    HttpSession session = request.getSession();
-    session.setAttribute("validationErrors", e.getErrors());
-    session.setAttribute("formValues", e.getFormValues());
-    
-    // Redirection vers l'URL d'origine (formulaire)
-    response.sendRedirect(request.getContextPath() + e.getRedirectUrl());
-}
+    // SPRINT 16: Méthode principale de vérification (classe + méthode)
+    private void checkCompleteAuthorization(Class<?> controllerClass, Method method, HttpServletRequest request) {
+        UserPrincipal currentUser = getCurrentUser(request);
+        
+        System.out.println("=== SPRINT 16: Vérification complète ===");
+        System.out.println("Classe: " + controllerClass.getSimpleName());
+        System.out.println("Méthode: " + method.getName());
+        System.out.println("Utilisateur: " + (currentUser.isAuthenticated() ? currentUser.getUsername() : "non authentifié"));
+        
+        // 1. Vérification au niveau de la CLASSE
+        checkClassLevelAuthorization(controllerClass, currentUser);
+        
+        // 2. Vérification au niveau de la MÉTHODE (peut surcharger la classe)
+        checkMethodLevelAuthorization(method, currentUser);
+        
+        System.out.println("=== Autorisation accordée ===");
+    }
 
-    
+    // SPRINT 16: Vérification au niveau de la classe
+    private void checkClassLevelAuthorization(Class<?> controllerClass, UserPrincipal currentUser) {
+        System.out.println("--- Vérification CLASSE ---");
+        
+        // Vérification @RequireAuth sur la classe
+        if (controllerClass.isAnnotationPresent(RequireAuth.class)) {
+            System.out.println("@RequireAuth trouvé sur la classe");
+            if (!currentUser.isAuthenticated()) {
+                System.out.println("ÉCHEC: Utilisateur non authentifié");
+                throw new AuthenticationException("Authentification requise pour accéder à ce contrôleur");
+            }
+            
+            RequireAuth requireAuth = controllerClass.getAnnotation(RequireAuth.class);
+            if (requireAuth.roles().length > 0) {
+                System.out.println("Rôles requis sur la classe: " + String.join(", ", requireAuth.roles()));
+                if (!currentUser.hasAnyRole(requireAuth.roles())) {
+                    System.out.println("ÉCHEC: Rôles insuffisants");
+                    throw new AuthorizationException("Rôle requis pour ce contrôleur: " + 
+                        String.join(", ", requireAuth.roles()));
+                }
+            }
+            System.out.println("SUCCÈS: @RequireAuth classe validé");
+        }
+        
+        // Vérification @RequireRole sur la classe
+        if (controllerClass.isAnnotationPresent(RequireRole.class)) {
+            System.out.println("@RequireRole trouvé sur la classe");
+            if (!currentUser.isAuthenticated()) {
+                System.out.println("ÉCHEC: Utilisateur non authentifié");
+                throw new AuthenticationException("Authentification requise");
+            }
+            
+            RequireRole requireRole = controllerClass.getAnnotation(RequireRole.class);
+            System.out.println("Rôles requis sur la classe: " + String.join(", ", requireRole.value()));
+            if (!currentUser.hasAnyRole(requireRole.value())) {
+                System.out.println("ÉCHEC: Rôles insuffisants");
+                throw new AuthorizationException("Rôle requis pour ce contrôleur: " + 
+                    String.join(", ", requireRole.value()));
+            }
+            System.out.println("SUCCÈS: @RequireRole classe validé");
+        }
+    }
+
+    // Vérification au niveau de la méthode (existante, améliorée)
+    private void checkMethodLevelAuthorization(Method method, UserPrincipal currentUser) {
+        System.out.println("--- Vérification MÉTHODE ---");
+        
+        // Vérification @RequireAuth au niveau de la méthode
+        if (method.isAnnotationPresent(RequireAuth.class)) {
+            System.out.println("@RequireAuth trouvé sur la méthode");
+            if (!currentUser.isAuthenticated()) {
+                System.out.println("ÉCHEC: Utilisateur non authentifié");
+                throw new AuthenticationException("Authentification requise pour accéder à cette méthode");
+            }
+            
+            RequireAuth requireAuth = method.getAnnotation(RequireAuth.class);
+            if (requireAuth.roles().length > 0) {
+                System.out.println("Rôles requis sur la méthode: " + String.join(", ", requireAuth.roles()));
+                if (!currentUser.hasAnyRole(requireAuth.roles())) {
+                    System.out.println("ÉCHEC: Rôles insuffisants");
+                    throw new AuthorizationException("Rôle requis pour cette méthode: " + 
+                        String.join(", ", requireAuth.roles()));
+                }
+            }
+            System.out.println("SUCCÈS: @RequireAuth méthode validé");
+        }
+        
+        // Vérification @RequireRole au niveau de la méthode
+        if (method.isAnnotationPresent(RequireRole.class)) {
+            System.out.println("@RequireRole trouvé sur la méthode");
+            if (!currentUser.isAuthenticated()) {
+                System.out.println("ÉCHEC: Utilisateur non authentifié");
+                throw new AuthenticationException("Authentification requise");
+            }
+            
+            RequireRole requireRole = method.getAnnotation(RequireRole.class);
+            System.out.println("Rôles requis sur la méthode: " + String.join(", ", requireRole.value()));
+            if (!currentUser.hasAnyRole(requireRole.value())) {
+                System.out.println("ÉCHEC: Rôles insuffisants");
+                throw new AuthorizationException("Rôle requis: " + String.join(", ", requireRole.value()));
+            }
+            System.out.println("SUCCÈS: @RequireRole méthode validé");
+        }
+    }
+
+    private void handleValidationException(ValidationException e, HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        HttpSession session = request.getSession();
+        session.setAttribute("validationErrors", e.getErrors());
+        session.setAttribute("formValues", e.getFormValues());
+        response.sendRedirect(request.getContextPath() + e.getRedirectUrl());
+    }
+
     private void handleRestApiResponse(HttpServletResponse response, Object result) 
             throws IOException {
         response.setContentType("application/json");
@@ -325,11 +401,9 @@ private void handleValidationException(ValidationException e, HttpServletRequest
     private Object[] prepareMethodArguments(Method method, HttpServletRequest request, String currentPath) {
         Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
-        // Récupérez les paramètres multipart s'ils existent
         Map<String, Object> multipartParams = (Map<String, Object>) request.getAttribute("multipartParams");
         Map<String, String> formValues = new HashMap<>(); 
 
-        // Récupération des paramètres existants
         request.getParameterMap().forEach((key, values) -> {
             if (values != null && values.length > 0) {
                 formValues.put(key, values[0]);
@@ -354,7 +428,7 @@ private void handleValidationException(ValidationException e, HttpServletRequest
                 args[i] = new MySession(request.getSession());
                 continue;
             }
-            // Gestion des @ModelAttribute
+            
             if (param.isAnnotationPresent(ModelAttribute.class)) {
                 try {
                     args[i] = createModelFromRequest(param.getType(), request);
@@ -363,14 +437,13 @@ private void handleValidationException(ValidationException e, HttpServletRequest
                 }
                 continue;
             }
-            // Gestion des @Param (existant)
+            
             Param paramAnnotation = param.getAnnotation(Param.class);
             if (paramAnnotation != null) {
                 String paramName = paramAnnotation.name();
                 String paramValue = request.getParameter(paramName);
                 args[i] = convertParameterValue(paramValue, param.getType());
                 
-                // Validation des paramètres
                 if (param.isAnnotationPresent(Valid.class)) {
                     validateParameter(param, args[i], formValues, currentPath);
                 }
@@ -385,23 +458,19 @@ private void handleValidationException(ValidationException e, HttpServletRequest
         Map<String, String> errors = new HashMap<>();
         String paramName = parameter.getName();
 
-        // Récupérer le nom du paramètre depuis l'annotation @Param
         Param paramAnnotation = parameter.getAnnotation(Param.class);
         if (paramAnnotation != null) {
             paramName = paramAnnotation.name();
         }
 
-        // Stockage de la valeur pour réaffichage
         if (value != null) {
             formValues.put(paramName, value.toString());
         }
 
-        // Validation NotNull
         if (parameter.isAnnotationPresent(NotNull.class) && (value == null || value.toString().trim().isEmpty())) {
             errors.put(paramName, parameter.getAnnotation(NotNull.class).message());
         }
         
-        // Validation Size
         if (parameter.isAnnotationPresent(Size.class) && value instanceof String) {
             Size size = parameter.getAnnotation(Size.class);
             String strValue = (String) value;
@@ -410,7 +479,6 @@ private void handleValidationException(ValidationException e, HttpServletRequest
             }
         }
         
-        // Validation Email
         if (parameter.isAnnotationPresent(Email.class) && value instanceof String) {
             String emailRegex = "^[A-Za-z0-9+_.-]+@(.+)$";
             String strValue = (String) value;
@@ -419,7 +487,6 @@ private void handleValidationException(ValidationException e, HttpServletRequest
             }
         }
         
-        // Validation Pattern
         if (parameter.isAnnotationPresent(Pattern.class) && value instanceof String) {
             Pattern pattern = parameter.getAnnotation(Pattern.class);
             String strValue = (String) value;
@@ -429,20 +496,15 @@ private void handleValidationException(ValidationException e, HttpServletRequest
         }
         
         if (!errors.isEmpty()) {
-            // Trouver l'URL du formulaire - on doit déterminer l'URL GET correspondante
             String redirectUrl = findFormUrl(currentPath);
             throw new ValidationException(errors, formValues, redirectUrl);
         }
     }
 
     private String findFormUrl(String currentPath) {
-        // Logique pour déterminer l'URL du formulaire basé sur l'URL POST
-        // Par exemple, si POST /register alors GET /register-form
         if (currentPath.equals("/register")) {
             return "/register-form";
         }
-        // Vous pouvez ajouter d'autres mappings ici
-        // Ou utiliser une convention comme enlever le suffixe ou préfixer avec "form-"
         return currentPath + "-form";
     }
 
@@ -458,76 +520,16 @@ private void handleValidationException(ValidationException e, HttpServletRequest
         } else if (targetType.equals(Boolean.class) || targetType.equals(boolean.class)) {
             return Boolean.parseBoolean(value);
         }
-        // Ajouter d'autres conversions au besoin
         return value;
-    }
-
-    private void checkMethodAuthorization(Method method, HttpServletRequest request) {
-        UserPrincipal currentUser = getCurrentUser(request);
-        
-        System.out.println("=== DEBUG checkMethodAuthorization ===");
-        System.out.println("Méthode: " + method.getName());
-        System.out.println("@RequireAuth présent: " + method.isAnnotationPresent(RequireAuth.class));
-        System.out.println("@RequireRole présent: " + method.isAnnotationPresent(RequireRole.class));
-        System.out.println("Utilisateur authentifié: " + currentUser.isAuthenticated());
-        
-        // Vérification @RequireAuth au niveau de la méthode
-        if (method.isAnnotationPresent(RequireAuth.class)) {
-            System.out.println("Vérification @RequireAuth...");
-            if (!currentUser.isAuthenticated()) {
-                System.out.println("ÉCHEC: Utilisateur non authentifié");
-                throw new AuthenticationException("Authentification requise pour accéder à cette méthode");
-            }
-            
-            RequireAuth requireAuth = method.getAnnotation(RequireAuth.class);
-            if (requireAuth.roles().length > 0) {
-                System.out.println("Vérification des rôles requis: " + String.join(", ", requireAuth.roles()));
-                if (!currentUser.hasAnyRole(requireAuth.roles())) {
-                    System.out.println("ÉCHEC: Rôles insuffisants");
-                    throw new AuthorizationException("Rôle requis pour cette méthode: " + 
-                        String.join(", ", requireAuth.roles()));
-                }
-            }
-            System.out.println("SUCCÈS: @RequireAuth validé");
-        }
-        
-        // Vérification @RequireRole au niveau de la méthode
-        if (method.isAnnotationPresent(RequireRole.class)) {
-            System.out.println("Vérification @RequireRole...");
-            if (!currentUser.isAuthenticated()) {
-                System.out.println("ÉCHEC: Utilisateur non authentifié");
-                throw new AuthenticationException("Authentification requise");
-            }
-            
-            RequireRole requireRole = method.getAnnotation(RequireRole.class);
-            System.out.println("Rôles requis: " + String.join(", ", requireRole.value()));
-            if (!currentUser.hasAnyRole(requireRole.value())) {
-                System.out.println("ÉCHEC: Rôles insuffisants");
-                throw new AuthorizationException("Rôle requis: " + String.join(", ", requireRole.value()));
-            }
-            System.out.println("SUCCÈS: @RequireRole validé");
-        }
-        
-        System.out.println("=== Fin DEBUG checkMethodAuthorization ===");
     }
 
     private UserPrincipal getCurrentUser(HttpServletRequest request) {
         HttpSession session = request.getSession();
         UserPrincipal user = (UserPrincipal) session.getAttribute("currentUser");
         
-        // Debug
-        System.out.println("=== DEBUG getCurrentUser ===");
-        System.out.println("Session ID: " + session.getId());
-        
         if (user == null) {
-            System.out.println("Aucun utilisateur trouvé en session");
             return new UserPrincipal(); // Utilisateur non authentifié
         } else {
-            System.out.println("Utilisateur trouvé: " + user.getUsername());
-            System.out.println("Authentifié: " + user.isAuthenticated());
-            if (user.getRoles() != null) {
-                System.out.println("Rôles: " + String.join(", ", user.getRoles()));
-            }
             return user;
         }
     }
