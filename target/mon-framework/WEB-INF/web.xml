@@ -12,10 +12,31 @@
             <param-name>controller-package</param-name>
             <param-value>com.monframework.controllers</param-value>
         </init-param>
+        <multipart-config>
+        <!-- 5MB max -->
+        <max-file-size>5242880</max-file-size>
+        <!-- 10MB max request -->
+        <max-request-size>10485760</max-request-size>
+        <!-- Size threshold after which files will be written to disk -->
+        <file-size-threshold>1048576</file-size-threshold>
+    </multipart-config>
     </servlet>
     
     <servlet-mapping>
         <servlet-name>FrontController</servlet-name>
         <url-pattern>/</url-pattern>
     </servlet-mapping>
+
+    <error-page>
+        <error-code>404</error-code>
+        <location>/error.jsp</location>
+    </error-page>
+    <error-page>
+        <error-code>500</error-code>
+        <location>/error.jsp</location>
+    </error-page>
+    <error-page>
+        <exception-type>java.lang.Exception</exception-type>
+        <location>/error.jsp</location>
+    </error-page>
 </web-app>
